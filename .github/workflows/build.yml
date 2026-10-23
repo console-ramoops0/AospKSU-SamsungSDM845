@@ -1,0 +1,170 @@
+name: Build AospKSU Kernel
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_device:
+        description: 'Target Device'
+        required: true
+        type: choice
+        options:
+          - all (starqltechn, star2qltechn, crownqltechn)
+          - starqltechn (Galaxy S9)
+          - star2qltechn (Galaxy S9+)
+          - crownqltechn (Galaxy Note 9)
+        default: 'all (starqltechn, star2qltechn, crownqltechn)'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aospksu-kernel-build
+  cancel-in-progress: false
+
+env:
+  KERNEL_REPO: https://gitlab.com/samsung-sdm845/android_kernel_samsung_sdm845.git
+  KERNEL_BRANCH: lineage-22.2
+  CLANG_URL: https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android14-release/clang-r487747c.tar.gz
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      CCACHE_MAXSIZE: 3G
+      CCACHE_COMPRESS: "true"
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Build Dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo sed -i "s/#\$nrconf{restart} = 'i';/\$nrconf{restart} = 'a';/g" /etc/needrestart/needrestart.conf 2>/dev/null || true
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            build-essential bc flex bison libssl-dev libelf-dev libncurses5-dev \
+            zstd dwarves cpio python-is-python3 device-tree-compiler curl zip ccache \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
+
+      - name: Checkout Kernel Source
+        run: |
+          git clone -b "$KERNEL_BRANCH" "$KERNEL_REPO" --depth=1 kernel
+
+      - name: Setup Clang
+        run: |
+          mkdir -p ~/clang
+          curl -LSs "$CLANG_URL" | tar -xz -C ~/clang
+          echo "$HOME/clang/bin" >> "$GITHUB_PATH"
+
+      - name: Setup KernelSU
+        working-directory: kernel
+        run: |
+          curl -LSs "https://raw.githubusercontent.com/doubledashdot/sKernelSU/master/kernel/setup.sh" | bash -s master
+          sed -i "s/\\bstrlcpy\\b/strscpy/g" drivers/kernelsu/supercall/dispatch.c 2>/dev/null || true
+
+      - name: Setup Droidspaces
+        working-directory: kernel
+        run: |
+          for p in ../patches/*.patch; do
+            if [ -f "$p" ]; then
+              echo "Applying patch: $(basename "$p")"
+              patch -p1 -N --silent < "$p" || true
+            fi
+          done
+          cat ../configs/droidspaces.config >> arch/arm64/configs/sdm845_defconfig
+
+      - name: Configure LOCALVERSION
+        working-directory: kernel
+        run: |
+          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-AospKSU"/' arch/arm64/configs/sdm845_defconfig
+          echo 'CONFIG_LOCALVERSION="-AospKSU"' >> arch/arm64/configs/sdm845_defconfig
+
+      - name: Prepare Output Directory
+        run: mkdir -p output
+
+      - name: Build starqltechn
+        if: ${{ inputs.target_device == 'all (starqltechn, star2qltechn, crownqltechn)' || inputs.target_device == 'starqltechn (Galaxy S9)' }}
+        working-directory: kernel
+        run: |
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CLANG_TRIPLE=aarch64-linux-gnu-
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          export CC_ARM32=arm-linux-gnueabi-gcc
+
+          rm -rf out && mkdir -p out
+          make O=out CC="ccache clang" CC_ARM32="arm-linux-gnueabi-gcc" sdm845_defconfig starqlte_chn.config
+          make O=out CC="ccache clang" CC_ARM32="arm-linux-gnueabi-gcc" olddefconfig
+          make -j"$(nproc --all)" O=out CC="ccache clang" CC_ARM32="arm-linux-gnueabi-gcc" Image.gz-dtb
+
+          cp out/arch/arm64/boot/Image.gz-dtb ../AnyKernel3/Image.gz-dtb
+
+          cd ../AnyKernel3
+          zip -r9 "../output/AnyKernel3-AospKSU-starqltechn-${{ github.run_number }}.zip" . \
+            -x ".git/*" ".github/*" "*.zip" "Image.gz-dtb-*"
+          rm -f Image.gz-dtb
+
+      - name: Build star2qltechn
+        if: ${{ inputs.target_device == 'all (starqltechn, star2qltechn, crownqltechn)' || inputs.target_device == 'star2qltechn (Galaxy S9+)' }}
+        working-directory: kernel
+        run: |
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CLANG_TRIPLE=aarch64-linux-gnu-
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          export CC_ARM32=arm-linux-gnueabi-gcc
+
+          rm -rf out && mkdir -p out
+          make O=out CC="ccache clang" CC_ARM32="arm-linux-gnueabi-gcc" sdm845_defconfig star2qlte_chn.config
+          make O=out CC="ccache clang" CC_ARM32="arm-linux-gnueabi-gcc" olddefconfig
+          make -j"$(nproc --all)" O=out CC="ccache clang" CC_ARM32="arm-linux-gnueabi-gcc" Image.gz-dtb
+
+          cp out/arch/arm64/boot/Image.gz-dtb ../AnyKernel3/Image.gz-dtb
+
+          cd ../AnyKernel3
+          zip -r9 "../output/AnyKernel3-AospKSU-star2qltechn-${{ github.run_number }}.zip" . \
+            -x ".git/*" ".github/*" "*.zip" "Image.gz-dtb-*"
+          rm -f Image.gz-dtb
+
+      - name: Build crownqltechn
+        if: ${{ inputs.target_device == 'all (starqltechn, star2qltechn, crownqltechn)' || inputs.target_device == 'crownqltechn (Galaxy Note 9)' }}
+        working-directory: kernel
+        run: |
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CLANG_TRIPLE=aarch64-linux-gnu-
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          export CC_ARM32=arm-linux-gnueabi-gcc
+
+          rm -rf out && mkdir -p out
+          make O=out CC="ccache clang" CC_ARM32="arm-linux-gnueabi-gcc" sdm845_defconfig crownqlte_chn.config
+          make O=out CC="ccache clang" CC_ARM32="arm-linux-gnueabi-gcc" olddefconfig
+          make -j"$(nproc --all)" O=out CC="ccache clang" CC_ARM32="arm-linux-gnueabi-gcc" Image.gz-dtb
+
+          cp out/arch/arm64/boot/Image.gz-dtb ../AnyKernel3/Image.gz-dtb
+
+          cd ../AnyKernel3
+          zip -r9 "../output/AnyKernel3-AospKSU-crownqltechn-${{ github.run_number }}.zip" . \
+            -x ".git/*" ".github/*" "*.zip" "Image.gz-dtb-*"
+          rm -f Image.gz-dtb
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v4.9.337-AospKSU-${{ github.run_number }}
+          name: AospKSU 4.9.337 (KernelSU + Droidspaces) - Run ${{ github.run_number }}
+          body: |
+            AospKSU Kernel 4.9.337
+            - Branch: lineage-22.2
+            - KernelSU (sKernelSU)
+            - Droidspaces / LXC / Docker container support fully enabled
+            - Devices: starqltechn (S9), star2qltechn (S9+), crownqltechn (Note 9)
+          files: output/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
