@@ -1,4 +1,4 @@
-name: Build AospKSU Kernel
+name: Build LineageOS 22.2 Ruby Kernel
 
 on:
   workflow_dispatch:
@@ -18,11 +18,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: aospksu-kernel-build
+  group: lineage-ruby-kernel-build
   cancel-in-progress: false
 
 env:
-  KERNEL_REPO: https://gitlab.com/samsung-sdm845/android_kernel_samsung_sdm845.git
+  KERNEL_REPO: https://gitlab.com/vanadium-oss/sdm845/samsung/galaxysdm845/Trees/android_kernel_samsung_sdm845.git
   KERNEL_BRANCH: lineage-22.2
   CLANG_URL: https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android14-release/clang-r487747c.tar.gz
 
@@ -59,29 +59,6 @@ jobs:
           curl -LSs "$CLANG_URL" | tar -xz -C ~/clang
           echo "$HOME/clang/bin" >> "$GITHUB_PATH"
 
-      - name: Setup KernelSU
-        working-directory: kernel
-        run: |
-          curl -LSs "https://raw.githubusercontent.com/doubledashdot/sKernelSU/master/kernel/setup.sh" | bash -s master
-          sed -i "s/\\bstrlcpy\\b/strscpy/g" drivers/kernelsu/supercall/dispatch.c 2>/dev/null || true
-
-      - name: Setup Droidspaces
-        working-directory: kernel
-        run: |
-          for p in ../patches/*.patch; do
-            if [ -f "$p" ]; then
-              echo "Applying patch: $(basename "$p")"
-              patch -p1 -N --silent < "$p" || true
-            fi
-          done
-          cat ../configs/droidspaces.config >> arch/arm64/configs/sdm845_defconfig
-
-      - name: Configure LOCALVERSION
-        working-directory: kernel
-        run: |
-          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-AospKSU"/' arch/arm64/configs/sdm845_defconfig
-          echo 'CONFIG_LOCALVERSION="-AospKSU"' >> arch/arm64/configs/sdm845_defconfig
-
       - name: Prepare Output Directory
         run: mkdir -p output
 
@@ -104,7 +81,7 @@ jobs:
           cp out/arch/arm64/boot/Image.gz-dtb ../AnyKernel3/Image.gz-dtb
 
           cd ../AnyKernel3
-          zip -r9 "../output/AnyKernel3-AospKSU-starqltechn-${{ github.run_number }}.zip" . \
+          zip -r9 "../output/AnyKernel3-Lineage22.2-Ruby-starqltechn-${{ github.run_number }}.zip" . \
             -x ".git/*" ".github/*" "*.zip" "Image.gz-dtb-*"
           rm -f Image.gz-dtb
 
@@ -127,7 +104,7 @@ jobs:
           cp out/arch/arm64/boot/Image.gz-dtb ../AnyKernel3/Image.gz-dtb
 
           cd ../AnyKernel3
-          zip -r9 "../output/AnyKernel3-AospKSU-star2qltechn-${{ github.run_number }}.zip" . \
+          zip -r9 "../output/AnyKernel3-Lineage22.2-Ruby-star2qltechn-${{ github.run_number }}.zip" . \
             -x ".git/*" ".github/*" "*.zip" "Image.gz-dtb-*"
           rm -f Image.gz-dtb
 
@@ -150,20 +127,21 @@ jobs:
           cp out/arch/arm64/boot/Image.gz-dtb ../AnyKernel3/Image.gz-dtb
 
           cd ../AnyKernel3
-          zip -r9 "../output/AnyKernel3-AospKSU-crownqltechn-${{ github.run_number }}.zip" . \
+          zip -r9 "../output/AnyKernel3-Lineage22.2-Ruby-crownqltechn-${{ github.run_number }}.zip" . \
             -x ".git/*" ".github/*" "*.zip" "Image.gz-dtb-*"
           rm -f Image.gz-dtb
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v4.9.337-AospKSU-${{ github.run_number }}
-          name: AospKSU 4.9.337 (KernelSU + Droidspaces) - Run ${{ github.run_number }}
+          tag_name: v4.9.337-Ruby-${{ github.run_number }}
+          name: LineageOS 22.2 (Kernel 4.9.337+67-Ruby) - Run ${{ github.run_number }}
           body: |
-            AospKSU Kernel 4.9.337
+            LineageOS 22.2 Kernel 4.9.337+67-Ruby
             - Branch: lineage-22.2
-            - KernelSU (sKernelSU)
-            - Droidspaces / LXC / Docker container support fully enabled
+            - eBPF 5.4 + CIP Subsystem
+            - TikTok Blocker enabled
+            - Swappiness 100 tuning
             - Devices: starqltechn (S9), star2qltechn (S9+), crownqltechn (Note 9)
           files: output/*.zip
         env:
