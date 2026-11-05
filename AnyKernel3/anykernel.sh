@@ -2,7 +2,7 @@
 ## osm0sis @ xda-developers
 
 properties() { '
-kernel.string=AospKSU Kernel 4.9.337 (KernelSU + Droidspaces)
+kernel.string=LineageOS 22.2 (Kernel 4.9.337+67-Ruby) by fwlta
 do.devicecheck=1
 do.modules=0
 do.systemless=1
