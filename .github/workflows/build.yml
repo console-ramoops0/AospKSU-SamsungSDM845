@@ -59,6 +59,23 @@ jobs:
           curl -LSs "$CLANG_URL" | tar -xz -C ~/clang
           echo "$HOME/clang/bin" >> "$GITHUB_PATH"
 
+      - name: Setup KernelSU
+        working-directory: kernel
+        run: |
+          curl -LSs "https://raw.githubusercontent.com/doubledashdot/sKernelSU/master/kernel/setup.sh" | bash -s master
+          sed -i "s/\\bstrlcpy\\b/strscpy/g" drivers/kernelsu/supercall/dispatch.c 2>/dev/null || true
+
+      - name: Setup Droidspaces
+        working-directory: kernel
+        run: |
+          for p in ../patches/*.patch; do
+            if [ -f "$p" ]; then
+              echo "Applying patch: $(basename "$p")"
+              patch -p1 -N --silent < "$p" || true
+            fi
+          done
+          cat ../configs/droidspaces.config >> arch/arm64/configs/sdm845_defconfig
+
       - name: Prepare Output Directory
         run: mkdir -p output
 
@@ -139,6 +156,8 @@ jobs:
           body: |
             LineageOS 22.2 Kernel 4.9.337+67-Ruby
             - Branch: lineage-22.2
+            - KernelSU (sKernelSU)
+            - Droidspaces / LXC / Docker container support
             - eBPF 5.4 + CIP Subsystem
             - TikTok Blocker enabled
             - Swappiness 100 tuning

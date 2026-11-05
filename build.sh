@@ -26,6 +26,25 @@ fi
 
 cd kernel
 
+# Setup KernelSU (sKernelSU)
+curl -LSs "https://raw.githubusercontent.com/doubledashdot/sKernelSU/master/kernel/setup.sh" | bash -s master
+sed -i "s/\\bstrlcpy\\b/strscpy/g" drivers/kernelsu/supercall/dispatch.c 2>/dev/null || true
+
+# Setup Droidspaces patches & configuration
+if [ -d "$SCRIPT_DIR/patches" ]; then
+    for p in "$SCRIPT_DIR"/patches/*.patch; do
+        if [ -f "$p" ]; then
+            echo "Applying patch: $(basename "$p")"
+            patch -p1 -N --silent < "$p" || true
+        fi
+    done
+fi
+
+if [ -f "$SCRIPT_DIR/configs/droidspaces.config" ]; then
+    echo "Appending Droidspaces configuration..."
+    cat "$SCRIPT_DIR/configs/droidspaces.config" >> arch/arm64/configs/sdm845_defconfig
+fi
+
 mkdir -p ../output
 
 build_device() {
